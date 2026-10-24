@@ -269,8 +269,8 @@ test("OAuth start sets a short-lived browser-bound secure cookie and callback re
     `/api/auth/google/callback?code=x&state=wrong-${transaction.state}`,
     { headers: { cookie: `__Host-eiga-oauth=${oauthCookie}` } },
   );
-  assert.equal(mismatch.status, 200);
-  assert.match(await mismatch.text(), /Sign-in could not finish/);
+  assert.equal(mismatch.status, 303);
+  assert.match(mismatch.headers.get("location") ?? "", /auth=failed/);
   assert.equal(
     (
       await db

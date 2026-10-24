@@ -56,7 +56,6 @@ interface Transaction {
   nonce: string;
   verifier: string;
   expires: number;
-  popup: boolean;
 }
 
 async function transactionFor(
@@ -88,8 +87,7 @@ async function transactionFor(
       value.expires > now + TRANSACTION_SECONDS * 1000 ||
       ![value.state, value.nonce, value.verifier].every(
         (s) => typeof s === "string" && /^[\w-]{43}$/.test(s),
-      ) ||
-      typeof value.popup !== "boolean"
+      )
     )
       throw new Error();
     return value;
@@ -98,33 +96,16 @@ async function transactionFor(
   }
 }
 
-function complete(
-  env: Env,
-  ok: boolean,
-  popup: boolean,
-  sessionCookie?: string,
-): Response {
+function complete(env: Env, ok: boolean, sessionCookie?: string): Response {
   const resultHeaders = new Headers(headers);
   resultHeaders.delete("Content-Type");
   resultHeaders.append("Set-Cookie", cookie(env, "oauth", "", 0));
   if (sessionCookie) resultHeaders.append("Set-Cookie", sessionCookie);
-  const target = `${appOrigin(env)}/?auth=${ok ? "success" : "failed"}`;
-  if (!popup) {
-    resultHeaders.set("Location", target);
-    return new Response(null, { status: 303, headers: resultHeaders });
-  }
-  const nonce = randomToken();
-  resultHeaders.set("Content-Type", "text/html; charset=utf-8");
   resultHeaders.set(
-    "Content-Security-Policy",
-    `default-src 'none'; script-src 'nonce-${nonce}'; base-uri 'none'; frame-ancestors 'none'`,
+    "Location",
+    `${appOrigin(env)}/?auth=${ok ? "success" : "failed"}`,
   );
-  const origin = JSON.stringify(appOrigin(env)).replaceAll("<", "\\u003c");
-  const fallback = JSON.stringify(target).replaceAll("<", "\\u003c");
-  return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><title>EIGA sign-in</title><body><p>${ok ? "Signed in. You can return to EIGA." : "Sign-in could not finish. Return to EIGA and try again."}</p><script nonce="${nonce}">if(window.opener){window.opener.postMessage({type:'eiga-auth',ok:${ok}},${origin});window.close()}else{window.location.replace(${fallback})}</script></body></html>`,
-    { headers: resultHeaders },
-  );
+  return new Response(null, { status: 303, headers: resultHeaders });
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -182,7 +163,6 @@ export function createHandler(deps: Dependencies = defaults) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "");
     const now = deps.now();
-    let callbackPopup = false;
     try {
       const origin = appOrigin(env);
       const t = tables(env);
@@ -212,7 +192,6 @@ export function createHandler(deps: Dependencies = defaults) {
           nonce: randomToken(),
           verifier: randomToken(),
           expires: now + TRANSACTION_SECONDS * 1000,
-          popup: url.searchParams.get("popup") === "1",
         };
         const encoded = btoa(JSON.stringify(transaction))
           .replaceAll("+", "-")
@@ -247,7 +226,6 @@ export function createHandler(deps: Dependencies = defaults) {
 
       if (path === "/api/auth/google/callback" && request.method === "GET") {
         const transaction = await transactionFor(request, env, now);
-        callbackPopup = transaction.popup;
         if (
           url.searchParams.get("state") !== transaction.state ||
           url.searchParams.has("error")
@@ -320,7 +298,6 @@ export function createHandler(deps: Dependencies = defaults) {
         return complete(
           env,
           true,
-          transaction.popup,
           cookie(env, "session", token, SESSION_SECONDS),
         );
       }
@@ -470,7 +447,7 @@ export function createHandler(deps: Dependencies = defaults) {
       // Never log request URLs, provider responses, imports, or exception details.
       if (path === "/api/auth/google/callback") {
         try {
-          return complete(env, false, callbackPopup);
+          return complete(env, false);
         } catch {
           return json({ error: "Sign-in is not configured yet." }, 503);
         }

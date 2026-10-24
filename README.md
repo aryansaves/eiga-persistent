@@ -39,4 +39,4 @@ Frontend secret `EIGA_DEPLOY_DISPATCH_TOKEN` needs Actions Write on this reposit
 
 All deployment jobs share a concurrency group because D1 is shared. Use additive, backwards-compatible migrations: rolling back a Pages deployment does not undo SQL. Staging table resets must never delete production tables. Staging users and sessions are independent of production.
 
-Before a production release, manually test Google sign-in/cancel, import preservation, saved/local conflict selection, returning-user restore, save retry, stale-tab rejection, shared reviews, revoked links, logout, and mobile/theme behavior. CI does not pretend to complete a real person's Google login.
+Before a production release, manually test Google sign-in/cancel, redirect import preservation, saved/local conflict selection, returning-user restore, save retry, stale-tab rejection, shared reviews, revoked links, logout, and mobile/theme behavior. CI does not pretend to complete a real person's Google login.

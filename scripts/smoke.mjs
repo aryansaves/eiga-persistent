@@ -40,7 +40,7 @@ const denied = await request("/api/map", {
 assert.equal(denied.status, 401);
 const missing = await request(`/api/share/${"x".repeat(43)}`);
 assert.equal(missing.status, 404);
-const login = await request("/api/auth/google?popup=1");
+const login = await request("/api/auth/google");
 assert.equal(login.status, 302);
 assert.equal(
   new URL(login.headers.get("Location")).origin,
