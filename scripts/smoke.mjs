@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 
 const [environment, frontendCommit, backendCommit] = process.argv.slice(2);
 const config = JSON.parse(await readFile("deploy.json", "utf8"));
@@ -11,9 +12,27 @@ const request = (path, init = {}) =>
     signal: AbortSignal.timeout(15_000),
     ...init,
   });
-const health = await request("/api/health");
-assert.equal(health.status, 200, "Health endpoint must answer.");
-const body = await health.json();
+// A successful upload can precede the stable alias reaching every edge. Wait
+// for this exact release, rather than treating a previous healthy release as it.
+const deadline = Date.now() + 60_000;
+let body;
+while (Date.now() < deadline) {
+  try {
+    const health = await request(`/api/health?deployment=${backendCommit}`);
+    if (health.ok) {
+      body = await health.json();
+      if (
+        body.frontendCommit === frontendCommit &&
+        body.backendCommit === backendCommit
+      )
+        break;
+    }
+  } catch {
+    // A brief network or routing failure during propagation is retryable.
+  }
+  await delay(2000);
+}
+assert.ok(body, "The deployed health endpoint must become available.");
 assert.equal(body.ok, true);
 assert.equal(body.environment, environment);
 assert.equal(
