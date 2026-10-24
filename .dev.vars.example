@@ -1,0 +1,4 @@
+GOOGLE_CLIENT_ID=your-development-client-id
+GOOGLE_CLIENT_SECRET=your-development-client-secret
+# Local development only. Deployed origins come from deployment configuration.
+APP_ORIGIN=http://localhost:8788

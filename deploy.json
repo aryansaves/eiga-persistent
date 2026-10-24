@@ -1,0 +1,7 @@
+{
+  "databaseName": "eiga-db",
+  "databaseId": "f2e2fbc7-716f-423c-84c0-34b7187205a2",
+  "frontendRepository": "aryansaves/eiga",
+  "staging": { "project": "eiga-staging", "origin": "https://eiga-staging.pages.dev" },
+  "production": { "project": "eiga", "origin": "https://eiga.pages.dev" }
+}
