@@ -381,6 +381,9 @@ export function createHandler(deps: Dependencies = defaults) {
                 revision: row.revision,
                 updatedAt: row.updated_at,
                 shared: row.share_id !== null,
+                shareUrl: row.share_id
+                  ? `${origin}/?share=${row.share_id}`
+                  : null,
               }
             : null,
         );
@@ -429,6 +432,9 @@ export function createHandler(deps: Dependencies = defaults) {
           revision: updated.revision,
           updatedAt: updated.updated_at,
           shared: updated.share_id !== null,
+          shareUrl: updated.share_id
+            ? `${origin}/?share=${updated.share_id}`
+            : null,
         });
       }
       if (path === "/api/map" && request.method === "DELETE") {

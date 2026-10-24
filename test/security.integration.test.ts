@@ -324,6 +324,15 @@ test("session creation, map ownership, normalized review sharing, and share revo
   assert.equal(put.status, 200);
   const saved = (await put.json()) as { revision: number };
   assert.equal(saved.revision, 1);
+  const privateMap = await authed(
+    "/api/map",
+    owner.sessionCookie,
+    owner.csrfToken,
+  );
+  assert.equal(
+    ((await privateMap.json()) as { shareUrl: string | null }).shareUrl,
+    null,
+  );
 
   const stale = await authed(
     "/api/map",
@@ -362,6 +371,26 @@ test("session creation, map ownership, normalized review sharing, and share revo
   assert.equal(shared.status, 200);
   const sharedUrl = new URL(((await shared.json()) as { url: string }).url);
   const shareId = sharedUrl.searchParams.get("share")!;
+  const recovered = await authed(
+    "/api/map",
+    owner.sessionCookie,
+    owner.csrfToken,
+  );
+  assert.equal(
+    ((await recovered.json()) as { shareUrl: string }).shareUrl,
+    sharedUrl.href,
+  );
+  const repeated = await authed(
+    "/api/share",
+    owner.sessionCookie,
+    owner.csrfToken,
+    { method: "POST" },
+  );
+  assert.equal(
+    ((await repeated.json()) as { url: string }).url,
+    sharedUrl.href,
+  );
+
   const publicMap = await call(`/api/share/${shareId}`);
   assert.equal(publicMap.status, 200);
   const publicData = (await publicMap.json()) as {
@@ -384,6 +413,10 @@ test("session creation, map ownership, normalized review sharing, and share revo
     }),
   );
   assert.equal(latest.status, 200);
+  assert.equal(
+    ((await latest.json()) as { shareUrl: string }).shareUrl,
+    sharedUrl.href,
+  );
   const sameLink = await call(`/api/share/${shareId}`);
   assert.equal(
     ((await sameLink.json()) as { snapshot: ReturnType<typeof sampleSnapshot> })
@@ -407,6 +440,15 @@ test("session creation, map ownership, normalized review sharing, and share revo
   );
   assert.equal(revoke.status, 200);
   assert.equal((await call(`/api/share/${shareId}`)).status, 404);
+  const stopped = await authed(
+    "/api/map",
+    owner.sessionCookie,
+    owner.csrfToken,
+  );
+  assert.equal(
+    ((await stopped.json()) as { shareUrl: string | null }).shareUrl,
+    null,
+  );
 });
 
 test("anonymous map and share mutation are denied; authenticated writes enforce CSRF and payload validation", async () => {
