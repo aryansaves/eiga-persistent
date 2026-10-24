@@ -1,0 +1,153 @@
+name: EIGA deployment
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  workflow_dispatch:
+    inputs:
+      frontend_ref:
+        description: Frontend commit or branch (empty uses configured staging branch)
+        required: false
+        type: string
+      backend_ref:
+        description: Backend commit or branch (empty uses configured staging branch)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.pair.outputs.enabled }}
+      environment: ${{ steps.pair.outputs.environment }}
+      frontend: ${{ steps.pair.outputs.frontend }}
+      backend: ${{ steps.pair.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve an immutable release pair
+        id: pair
+        env:
+          GH_TOKEN: ${{ secrets.EIGA_FRONTEND_READ_TOKEN || github.token }}
+          BACKEND_TOKEN: ${{ github.token }}
+          FRONTEND_REF: ${{ inputs.frontend_ref }}
+          BACKEND_REF: ${{ inputs.backend_ref }}
+          STAGING_FRONTEND_REF: ${{ vars.STAGING_FRONTEND_REF }}
+          STAGING_BACKEND_REF: ${{ vars.STAGING_BACKEND_REF }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          const env = process.env;
+          const production = env.GITHUB_EVENT_NAME === 'push' && env.GITHUB_REF === 'refs/heads/main';
+          const release = existsSync('release.json') ? JSON.parse(readFileSync('release.json', 'utf8')) : {};
+          if (production && release.productionEnabled !== true) {
+            appendFileSync(env.GITHUB_OUTPUT, 'enabled=false\n');
+            console.log('Production is disabled until the reviewed release manifest enables it.');
+            process.exit(0);
+          }
+          async function commit(repo, ref, token, fallback = false) {
+            if (!/^[A-Za-z0-9_./-]{1,200}$/.test(ref)) throw new Error('Invalid source reference.');
+            let response = await fetch(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, {headers: {Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json'}});
+            if (response.status === 404 && fallback) return commit(repo, 'main', token);
+            if (!response.ok) throw new Error(`Cannot resolve ${repo} source (${response.status}).`);
+            const {sha} = await response.json();
+            if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid commit ID.');
+            return sha;
+          }
+          const frontendRepo = 'aryansaves/eiga';
+          const frontendRef = production ? release.frontendCommit : env.FRONTEND_REF || env.STAGING_FRONTEND_REF || 'codex/auth-persistence';
+          if (production && !/^[a-f0-9]{40}$/.test(frontendRef ?? '')) throw new Error('Production requires a pinned frontend commit.');
+          const backendRef = env.GITHUB_EVENT_NAME === 'push' ? env.GITHUB_SHA : env.BACKEND_REF || env.STAGING_BACKEND_REF || 'codex/auth-persistence';
+          const frontend = await commit(frontendRepo, frontendRef, env.GH_TOKEN, !production && !env.FRONTEND_REF && !env.STAGING_FRONTEND_REF);
+          const backend = await commit(env.GITHUB_REPOSITORY, backendRef, env.BACKEND_TOKEN, !env.BACKEND_REF && !env.STAGING_BACKEND_REF);
+          const target = production ? 'production' : 'staging';
+          appendFileSync(env.GITHUB_OUTPUT, `enabled=true\nenvironment=${target}\nfrontend=${frontend}\nbackend=${backend}\n`);
+          appendFileSync(env.GITHUB_STEP_SUMMARY, `Deploying **${target}**\n\nFrontend: \`${frontend}\`\n\nBackend: \`${backend}\`\n`);
+          NODE
+
+  deploy:
+    needs: resolve
+    if: needs.resolve.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.resolve.outputs.environment }}
+      url: ${{ needs.resolve.outputs.environment == 'production' && 'https://eiga.pages.dev' || 'https://eiga-staging.pages.dev' }}
+    # Both environments share D1. Never cancel a migration or overlap deployments.
+    concurrency:
+      group: eiga-shared-d1
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.backend }}
+          path: backend
+      - uses: actions/checkout@v4
+        with:
+          repository: aryansaves/eiga
+          ref: ${{ needs.resolve.outputs.frontend }}
+          token: ${{ secrets.EIGA_FRONTEND_READ_TOKEN || github.token }}
+          path: frontend
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Verify production frontend was merged
+        if: needs.resolve.outputs.environment == 'production'
+        working-directory: frontend
+        env:
+          FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
+        run: git merge-base --is-ancestor "$FRONTEND_COMMIT" origin/main
+      - name: Install dependencies
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+      - name: Check backend
+        working-directory: backend
+        run: npm run check
+      - name: Check and build frontend
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build -- --webpack
+      - name: Assemble release
+        working-directory: backend
+        env:
+          TARGET: ${{ needs.resolve.outputs.environment }}
+          FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
+          BACKEND_COMMIT: ${{ needs.resolve.outputs.backend }}
+        run: npm run assemble -- "$TARGET" ../frontend "$FRONTEND_COMMIT" "$BACKEND_COMMIT"
+      - name: Apply environment migrations and deploy Pages
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TARGET: ${{ needs.resolve.outputs.environment }}
+          BACKEND_COMMIT: ${{ needs.resolve.outputs.backend }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          PROJECT=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8"))[process.env.TARGET].project)')
+          DATABASE=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8")).databaseName)')
+          npx wrangler d1 migrations apply "$DATABASE" --remote --config wrangler.json
+          npx wrangler pages deploy public --project-name "$PROJECT" --branch main --commit-hash "$BACKEND_COMMIT" --config wrangler.json
+      - name: Verify deployed application
+        working-directory: backend
+        env:
+          TARGET: ${{ needs.resolve.outputs.environment }}
+          FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
+          BACKEND_COMMIT: ${{ needs.resolve.outputs.backend }}
+        run: npm run smoke -- "$TARGET" "$FRONTEND_COMMIT" "$BACKEND_COMMIT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-${{ needs.resolve.outputs.environment }}
+          path: backend/.generated/release.json
+          if-no-files-found: ignore
