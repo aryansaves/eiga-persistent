@@ -7,7 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "node scripts/configure.mjs staging && wrangler pages dev public --config wrangler.json",
+    "dev": "node scripts/configure.mjs staging && wrangler pages dev public",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src functions test",
     "test": "node --test test/*.test.ts",

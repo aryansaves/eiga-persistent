@@ -139,7 +139,7 @@ jobs:
           DATABASE=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8")).databaseName)')
           node scripts/ci-command.mjs node scripts/preflight.mjs "$TARGET"
           node scripts/ci-command.mjs npx wrangler d1 migrations apply "$DATABASE" --remote --config wrangler.json
-          node scripts/ci-command.mjs npx wrangler pages deploy public --project-name "$PROJECT" --branch main --commit-hash "$BACKEND_COMMIT" --config wrangler.json
+          node scripts/ci-command.mjs npx wrangler pages deploy public --project-name "$PROJECT" --branch main --commit-hash "$BACKEND_COMMIT"
       - name: Verify deployed application
         working-directory: backend
         env:
