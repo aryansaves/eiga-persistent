@@ -2,7 +2,7 @@ name: EIGA deployment
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main, "codex/**"]
   workflow_dispatch:
     inputs:
       frontend_ref:
@@ -137,6 +137,7 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           PROJECT=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8"))[process.env.TARGET].project)')
           DATABASE=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8")).databaseName)')
+          node scripts/ci-command.mjs node scripts/preflight.mjs "$TARGET"
           node scripts/ci-command.mjs npx wrangler d1 migrations apply "$DATABASE" --remote --config wrangler.json
           node scripts/ci-command.mjs npx wrangler pages deploy public --project-name "$PROJECT" --branch main --commit-hash "$BACKEND_COMMIT" --config wrangler.json
       - name: Verify deployed application

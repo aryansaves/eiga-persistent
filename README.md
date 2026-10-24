@@ -18,7 +18,7 @@ One D1 database contains fixed `staging_` and `production_` users, sessions and 
 
 ## Runtime settings
 
-Both Pages projects bind `DB` to the database specified in `deploy.json`. Each project's production deployment environment needs its own `GOOGLE_CLIENT_ID` and encrypted `GOOGLE_CLIENT_SECRET`. The Google callback is `<APP_ORIGIN>/api/auth/google/callback`. `APP_ENV`, `APP_ORIGIN`, and the deployed commit pair come from generated Wrangler configuration. Secrets stay in the dashboard and do not enter the static build.
+Both Pages projects bind `DB` to the database specified in `deploy.json`. Each project's production deployment environment needs its own `GOOGLE_CLIENT_ID` and encrypted `GOOGLE_CLIENT_SECRET`. The Google callback is `<APP_ORIGIN>/api/auth/google/callback`. `APP_ENV`, `APP_ORIGIN`, and the deployed commit pair come from generated Wrangler configuration. CI preflight verifies credential names without reading encrypted values and preserves a plain-text client ID in generated config. Secrets stay in the dashboard and do not enter the static build.
 
 API: `GET /api/auth/session`, `GET /api/auth/google`, `GET /api/auth/google/callback`, `POST /api/auth/logout`, `GET|PUT|DELETE /api/map`, `POST|DELETE /api/share`, `GET /api/share/:token`, and `GET /api/health`. Every authenticated mutation requires `x-csrf-token`. Map writes send `{snapshot, revision}` and return 409 on stale revisions. Share URLs resolve the owner's latest saved snapshot; deleting a map or revoking its share removes public access.
 
