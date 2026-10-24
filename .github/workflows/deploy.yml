@@ -39,6 +39,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          process.on('uncaughtException', error => { console.error(`::error::${error.message}`); process.exit(1); });
           const env = process.env;
           const production = env.GITHUB_EVENT_NAME === 'push' && env.GITHUB_REF === 'refs/heads/main';
           const release = existsSync('release.json') ? JSON.parse(readFileSync('release.json', 'utf8')) : {};
@@ -50,7 +51,7 @@ jobs:
           async function commit(repo, ref, token, fallback = false) {
             if (!/^[A-Za-z0-9_./-]{1,200}$/.test(ref)) throw new Error('Invalid source reference.');
             let response = await fetch(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, {headers: {Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json'}});
-            if (response.status === 404 && fallback) return commit(repo, 'main', token);
+            if ([404, 422].includes(response.status) && fallback) return commit(repo, 'main', token);
             if (!response.ok) throw new Error(`Cannot resolve ${repo} source (${response.status}).`);
             const {sha} = await response.json();
             if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid commit ID.');
@@ -109,14 +110,14 @@ jobs:
           npm ci --prefix frontend
       - name: Check backend
         working-directory: backend
-        run: npm run check
+        run: node scripts/ci-command.mjs npm run check
       - name: Check and build frontend
         working-directory: frontend
         run: |
-          npm run typecheck
-          npm run lint
-          npm test
-          npm run build -- --webpack
+          node ../backend/scripts/ci-command.mjs npm run typecheck
+          node ../backend/scripts/ci-command.mjs npm run lint
+          node ../backend/scripts/ci-command.mjs npm test
+          node ../backend/scripts/ci-command.mjs npm run build -- --webpack
       - name: Assemble release
         working-directory: backend
         env:
@@ -136,15 +137,15 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           PROJECT=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8"))[process.env.TARGET].project)')
           DATABASE=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8")).databaseName)')
-          npx wrangler d1 migrations apply "$DATABASE" --remote --config wrangler.json
-          npx wrangler pages deploy public --project-name "$PROJECT" --branch main --commit-hash "$BACKEND_COMMIT" --config wrangler.json
+          node scripts/ci-command.mjs npx wrangler d1 migrations apply "$DATABASE" --remote --config wrangler.json
+          node scripts/ci-command.mjs npx wrangler pages deploy public --project-name "$PROJECT" --branch main --commit-hash "$BACKEND_COMMIT" --config wrangler.json
       - name: Verify deployed application
         working-directory: backend
         env:
           TARGET: ${{ needs.resolve.outputs.environment }}
           FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
           BACKEND_COMMIT: ${{ needs.resolve.outputs.backend }}
-        run: npm run smoke -- "$TARGET" "$FRONTEND_COMMIT" "$BACKEND_COMMIT"
+        run: node scripts/ci-command.mjs npm run smoke -- "$TARGET" "$FRONTEND_COMMIT" "$BACKEND_COMMIT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
