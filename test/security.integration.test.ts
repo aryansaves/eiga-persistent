@@ -368,9 +368,28 @@ test("session creation, map ownership, normalized review sharing, and share revo
     snapshot: ReturnType<typeof sampleSnapshot>;
   };
   assert.equal(publicData.snapshot.films[0].title, "Updated");
+  assert.equal(publicData.snapshot.films[0].uri, null);
+  assert.deepEqual(Object.keys(publicData).sort(), ["snapshot", "updatedAt"]);
   assert.deepEqual(publicData.snapshot.reviews, [
     ["film-1", "A thoughtful review."],
   ]);
+
+  const latest = await authed(
+    "/api/map",
+    owner.sessionCookie,
+    owner.csrfToken,
+    jsonRequest("PUT", {
+      revision: 2,
+      snapshot: sampleSnapshot("Latest saved map"),
+    }),
+  );
+  assert.equal(latest.status, 200);
+  const sameLink = await call(`/api/share/${shareId}`);
+  assert.equal(
+    ((await sameLink.json()) as { snapshot: ReturnType<typeof sampleSnapshot> })
+      .snapshot.films[0].title,
+    "Latest saved map",
+  );
 
   const other = await finishLogin("auth-code-second");
   const otherMap = await authed(

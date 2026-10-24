@@ -15,7 +15,11 @@ import {
   sessionFor,
   TRANSACTION_SECONDS,
 } from "./session.ts";
-import { MAX_SNAPSHOT_BYTES, parseSnapshot } from "./snapshot.ts";
+import {
+  MAX_SNAPSHOT_BYTES,
+  parseSnapshot,
+  type Snapshot,
+} from "./snapshot.ts";
 
 class HttpError extends Error {
   status: number;
@@ -314,8 +318,14 @@ export function createHandler(deps: Dependencies = defaults) {
             404,
             "This shared map is unavailable or its link has been revoked.",
           );
+        const snapshot = JSON.parse(map.snapshot) as Snapshot;
         return json({
-          snapshot: JSON.parse(map.snapshot),
+          // Export URIs can point at a personal diary page; the public graph
+          // needs film identity, never a source profile link.
+          snapshot: {
+            ...snapshot,
+            films: snapshot.films.map((film) => ({ ...film, uri: null })),
+          },
           updatedAt: map.updated_at,
         });
       }
