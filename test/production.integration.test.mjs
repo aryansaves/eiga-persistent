@@ -41,7 +41,7 @@ test("readiness rejects automatic production Git builds without changing setting
   const f = fixture([project(git(true))]);
   await assert.rejects(
     prepareProduction(f.options),
-    /Automatic production Git deployments are enabled/,
+    /Explicit cutover approval is required/,
   );
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0].body, null);
@@ -66,4 +66,32 @@ test("missing or unencrypted production credentials prevent cutover mutations", 
     await assert.rejects(prepareProduction(f.options), /GOOGLE_CLIENT/);
     assert.equal(f.calls.length, 1);
   }
+});
+
+test("explicitly approved cutover disables only production Git builds and verifies the result", async () => {
+  const f = fixture([
+    project(git(true)),
+    project(git(false)),
+    project(git(false)),
+  ]);
+  await prepareProduction({ ...f.options, disableAutomaticGitBuilds: true });
+  assert.deepEqual(
+    f.calls.map((c) => c.method),
+    ["GET", "PATCH", "GET"],
+  );
+  assert.deepEqual(f.calls[1].body, {
+    source: { config: { production_deployments_enabled: false } },
+  });
+});
+
+test("approved cutover still fails if the setting is not preserved", async () => {
+  const f = fixture([
+    project(git(true)),
+    project(git(true)),
+    project(git(true)),
+  ]);
+  await assert.rejects(
+    prepareProduction({ ...f.options, disableAutomaticGitBuilds: true }),
+    /did not disable/,
+  );
 });
