@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-/** Validate production settings and keep releases owned by the combined CI job. */
+/** Read-only production readiness check; never changes Cloudflare settings. */
 export async function prepareProduction({
   account,
   token,
@@ -10,14 +10,9 @@ export async function prepareProduction({
   if (!account || !token || !project)
     throw new Error("Configure the Cloudflare deployment credentials.");
   const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/pages/projects/${encodeURIComponent(project)}`;
-  async function request(method = "GET", body) {
+  async function request() {
     const response = await fetcher(endpoint, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok)
@@ -40,16 +35,10 @@ export async function prepareProduction({
   if (
     current.source &&
     current.source.config?.production_deployments_enabled !== false
-  ) {
-    await request("PATCH", {
-      source: { config: { production_deployments_enabled: false } },
-    });
-    const updated = await request();
-    if (updated.source?.config?.production_deployments_enabled !== false)
-      throw new Error(
-        "Automatic production Git deployments must be disabled before merging the frontend.",
-      );
-  }
+  )
+    throw new Error(
+      "Automatic production Git deployments are enabled. Disable them before merging the frontend so combined CI owns releases.",
+    );
 }
 
 if (process.argv[1] === import.meta.filename) {
