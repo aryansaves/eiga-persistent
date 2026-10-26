@@ -10,7 +10,7 @@
     "dev": "node scripts/configure.mjs staging && wrangler pages dev public",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src functions test",
-    "test": "node --test test/*.test.ts",
+    "test": "node --test test/*.test.ts test/*.test.mjs",
     "build": "wrangler pages functions build --outdir .generated/worker",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "configure": "node scripts/configure.mjs",

@@ -1,4 +1,4 @@
 {
-  "productionEnabled": false,
-  "frontendCommit": "b9a4c12a86cecc05bc5935ad606ff3866669b032"
+  "productionEnabled": true,
+  "frontendCommit": "5383111e0cf692252144b71ac5c8595ca4c016b1"
 }

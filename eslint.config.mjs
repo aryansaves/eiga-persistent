@@ -5,6 +5,10 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    files: ["test/**/*.mjs"],
+    languageOptions: { globals: { Response: "readonly", URL: "readonly" } },
+  },
+  {
     files: ["**/*.ts"],
     rules: {
       "@typescript-eslint/no-unused-vars": [

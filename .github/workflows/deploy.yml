@@ -114,6 +114,7 @@ jobs:
       - name: Check and build frontend
         working-directory: frontend
         run: |
+          node ../backend/scripts/ci-command.mjs npm run format:check
           node ../backend/scripts/ci-command.mjs npm run typecheck
           node ../backend/scripts/ci-command.mjs npm run lint
           node ../backend/scripts/ci-command.mjs npm test
@@ -147,6 +148,13 @@ jobs:
           FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
           BACKEND_COMMIT: ${{ needs.resolve.outputs.backend }}
         run: node scripts/ci-command.mjs npm run smoke -- "$TARGET" "$FRONTEND_COMMIT" "$BACKEND_COMMIT"
+      - name: Prepare production cutover after staging verification
+        if: needs.resolve.outputs.environment == 'staging'
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/ci-command.mjs node scripts/prepare-production.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

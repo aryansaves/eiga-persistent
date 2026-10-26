@@ -95,8 +95,8 @@ const sampleSnapshot = (title = "A Film") => ({
   likes: ["film-1"],
 });
 
-async function beginLogin(popup = false) {
-  const response = await call(`/api/auth/google${popup ? "?popup=1" : ""}`);
+async function beginLogin() {
+  const response = await call("/api/auth/google");
   assert.equal(response.status, 302);
   const oauthCookie = cookieValue(response, "__Host-eiga-oauth");
   const encoded = oauthCookie.split(".")[0];
@@ -254,7 +254,7 @@ test("Google ID tokens require a valid RS256 signature, issuer, audience, expiry
 });
 
 test("OAuth start sets a short-lived browser-bound secure cookie and callback rejects state mismatch", async () => {
-  const { response, oauthCookie, transaction } = await beginLogin(true);
+  const { response, oauthCookie, transaction } = await beginLogin();
   const cookie = response.headers.get("set-cookie") ?? "";
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /Secure/);

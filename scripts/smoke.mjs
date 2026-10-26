@@ -38,12 +38,12 @@ assert.equal(body.environment, environment);
 assert.equal(
   body.frontendCommit,
   frontendCommit,
-  "Staging must serve the requested frontend.",
+  "Deployment must serve the requested frontend.",
 );
 assert.equal(
   body.backendCommit,
   backendCommit,
-  "Staging must serve the requested backend.",
+  "Deployment must serve the requested backend.",
 );
 const home = await request("/");
 assert.equal(home.status, 200);
