@@ -1,5 +1,5 @@
 {
   "productionEnabled": true,
-  "frontendCommit": "bde5e6cf491b36fb0e8644ce700f4b19935bea69",
+  "frontendCommit": "048ca30b4706357450855702209eb6d04a675497",
   "disableAutomaticProductionGitBuilds": true
 }
