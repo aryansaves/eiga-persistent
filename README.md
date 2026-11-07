@@ -1,57 +1,86 @@
-# EIGA persistence
+```text
+ _____ ___ ____    _
+| ____|_ _/ ___|  / \
+|  _|  | | |  _  / _ \
+| |___ | | |_| |/ ___ \
+|_____|___\____/_/   \_\
+```
 
-Cloudflare Pages Functions for the [EIGA frontend](https://github.com/aryansaves/eiga). This repository owns Google authentication, D1 persistence, share links, migrations, and combined app deployments. The Next.js frontend remains a static export in its own repository.
+**Persistence for your cinema map.**
 
-## Development
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Pages Functions](https://img.shields.io/badge/Pages_Functions-F38020?style=flat-square&logo=cloudflare&logoColor=white)
+![Cloudflare D1](https://img.shields.io/badge/Cloudflare_D1-F38020?style=flat-square&logo=cloudflare&logoColor=white)
+![Google OAuth](https://img.shields.io/badge/Google_OAuth-4285F4?style=flat-square&logo=google&logoColor=white)
 
-Use Node 22.18 or newer. Run `npm ci`, copy `.dev.vars.example` to ignored `.dev.vars`, and enter the development Google client credentials there. Never commit credentials. `npm run dev` serves the API at `http://localhost:8788`; copy the frontend's built `out/` contents into ignored `public/` to run the full app on that origin. Google must allow `http://localhost:8788/api/auth/google/callback`.
+[Live app](https://eiga.pages.dev/) · [Staging](https://eiga-staging.pages.dev/) · [Frontend](https://github.com/aryansaves/eiga)
 
-`npm run check` runs types, lint, D1-backed integration tests, and the Functions build. Local development and tests use local SQLite, never the remote database.
+The server behind EIGA: Google sign-in, saved atlases, public share links, and combined
+Cloudflare Pages deployments. The frontend remains a separate static Next.js app.
 
-## Data and authentication
+## What lives here
 
-The browser parses raw exports locally. Only a signed-in user's normalized library is saved. Snapshot v1 contains films, watches, rating/review entry arrays and liked IDs; limits are 20,000 films, 100,000 viewing events, and 1.5 MB encoded JSON. Derived graph coordinates and metrics are recomputed by the frontend. Reviews are escaped text and are included in explicitly shared maps.
+- Google OAuth with PKCE, verified ID tokens, and hashed application sessions.
+- D1 storage for normalized library snapshots, with revision checks against stale saves.
+- Share links that always resolve the latest saved atlas and can be revoked.
+- Database migrations, release assembly, CI checks, and deployment smoke tests.
 
-Google uses authorization code + PKCE, a signed browser-bound ten-minute transaction, and verified ID tokens. Application sessions are random opaque cookies; D1 stores their hashes, with a 30-day expiry. Mutations require a same-origin request and a session-bound CSRF token. Google access and refresh tokens are not stored. No film titles, reviews, import contents, or provider response bodies are logged.
+## Run locally
 
-One D1 database contains fixed `staging_` and `production_` users, sessions and maps tables. This is logical separation, not a security boundary: either binding can access the whole database. SQL identifiers are selected by server configuration. `migrations/*.sql` are templates; `npm run configure -- staging` generates staging-only SQL and an ignored root `wrangler.json`. Production uses the same templates with its own table prefix and migration ledger. Do not apply template SQL directly or manually edit remote tables.
+Requires **Node.js 22.18+**. Keep both repositories in sibling directories.
 
-## Runtime settings
+```bash
+npm ci
+cp .dev.vars.example .dev.vars
+npm run configure -- staging
+npx wrangler d1 migrations apply eiga-db --local --config wrangler.json
+```
 
-Both Pages projects bind `DB` to the database specified in `deploy.json`. Each project's production deployment environment needs its own `GOOGLE_CLIENT_ID` and encrypted `GOOGLE_CLIENT_SECRET`. The Google callback is `<APP_ORIGIN>/api/auth/google/callback`. `APP_ENV`, `APP_ORIGIN`, and the deployed commit pair come from generated Wrangler configuration. CI preflight verifies credential names without reading encrypted values and preserves a plain-text client ID in generated config. Secrets stay in the dashboard and do not enter the static build.
+Add development Google credentials to the ignored `.dev.vars` file. Allow
+`http://localhost:8788/api/auth/google/callback` in the Google OAuth client.
+To run the complete app, build the frontend and copy its static output:
 
-API: `GET /api/auth/session`, `GET /api/auth/google`, `GET /api/auth/google/callback`, `POST /api/auth/logout`, `GET|PUT|DELETE /api/map`, `POST|DELETE /api/share`, `GET /api/share/:token`, and `GET /api/health`. Every authenticated mutation requires `x-csrf-token`. Map writes send `{snapshot, revision}` and return 409 on stale revisions. Owner map responses include the current share URL so it remains available to copy after a reload. Explicit uploads while signed in automatically replace the saved snapshot, keeping its existing share URL. Restored local drafts and stale revisions still require a choice. Share URLs resolve the owner's latest saved snapshot; deleting a map or revoking its share removes public access.
+```bash
+npm --prefix ../eiga ci
+npm --prefix ../eiga run build -- --webpack
+cp -R ../eiga/out/. public/
+npm run dev
+```
 
-## Staging and production
+Open [localhost:8788](http://localhost:8788). Local development uses local SQLite.
+Run `npm run check` for types, lint, integration tests, and the Functions build.
 
-Feature branches run backend checks through pull requests targeting `staging` or `main`.
-Only backend `staging` pushes deploy staging; frontend `staging` pushes dispatch this
-repository's `deploy.yml` on backend `staging`, passing the frontend commit. Both
-repositories need a persistent `staging` branch, initially created from `main`.
-Install this workflow on backend `staging` before pushing frontend `staging`.
-Legacy `STAGING_FRONTEND_REF` and `STAGING_BACKEND_REF` variables are no longer read.
-Manual dispatch runs only on backend `staging`; the optional frontend commit must
-already belong to frontend `staging`. A missing staging branch fails explicitly.
+## Data and privacy
 
-Merge feature PRs into `staging`, test the combined site, and promote tested work
-to `main`. CI resolves sources once to immutable SHAs, checks both repositories,
-applies staging-only migrations, and uploads frontend assets plus root-level
-Functions together to `eiga-staging`. The staging project uses `--branch main`
-deliberately so the stable project root points at the tested release; this Pages
-alias does not select the source Git branch. CI verifies the live health endpoint
-matches both commits and checks the app, D1, configured login, and anonymous rules.
+```text
+Browser → same-origin Pages Functions → D1
+          Google sign-in                 saved atlas + sessions
+```
 
-Backend GitHub settings:
+Raw exports are parsed in the browser. Only signed-in users save normalized library
+data. Shared atlases include reviews; a new upload updates the existing link.
+Returning users open their saved atlas, and can explicitly upload an export to replace it.
+Mutations require a session and CSRF protection. Google access and refresh tokens are not stored.
 
-- Secret `CLOUDFLARE_API_TOKEN`: account-scoped Pages Edit and D1 Edit.
-- Variable (or secret) `CLOUDFLARE_ACCOUNT_ID`.
-- Optional secret `EIGA_FRONTEND_READ_TOKEN`: Contents Read for a private frontend repository.
-- Environments `staging` and `production`, with production limited to `main` where supported.
+Staging and production use separate tables and migration ledgers in one D1 database.
+This is logical separation, not database-level isolation. Keep migrations additive;
+rolling back a deployment does not undo SQL.
 
-Frontend secret `EIGA_DEPLOY_DISPATCH_TOKEN` needs Actions Write on this repository. If absent, frontend CI fails clearly rather than silently skipping deployment.
+## Checks and releases
 
-`release.json` pins the production frontend SHA. To release, pin the reviewed frontend SHA on backend `staging`, set `productionEnabled: true`, and stage that pair. After staging smoke tests pass, CI checks production Google credentials and automatic production Git build settings. By default this is read-only. The explicitly approved cutover flag `disableAutomaticProductionGitBuilds: true` disables only automatic production Git builds and verifies the setting before merging. Merge the tested frontend staging branch to main, then merge backend staging to main. Main pushes deploy production only when that flag is enabled; the workflow verifies the frontend commit belongs to frontend main. Frontend main pushes alone do not deploy production. Disable the legacy automatic production Git build before merging; Wrangler deployment and preview builds remain available.
+1. Open feature PRs against `staging`; merge to deploy and test the combined app.
+2. Promote the tested frontend to `main`, pin its SHA in `release.json` on backend
+   `staging`, and verify that release pair there.
+3. Merge backend `staging` into `main` to release production. CI checks both repos,
+   applies migrations, deploys assets and Functions together, and verifies the live commit pair.
 
-All deployment jobs share a concurrency group because D1 is shared. Use additive, backwards-compatible migrations: rolling back a Pages deployment does not undo SQL. Staging table resets must never delete production tables. Staging users and sessions are independent of production.
+For your own deployment, set projects, origins, and D1 details in `deploy.json`.
+Configure `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in GitHub Actions, and
+`GOOGLE_CLIENT_ID` plus encrypted `GOOGLE_CLIENT_SECRET` in each Pages project.
+The frontend's `EIGA_DEPLOY_DISPATCH_TOKEN` needs Actions Write on this repository.
+A private frontend also needs `EIGA_FRONTEND_READ_TOKEN` with Contents Read here.
 
-Before a production release, manually test Google sign-in/cancel, redirect import preservation, saved/local conflict selection, returning-user restore, save retry, stale-tab rejection, shared reviews, revoked links, logout, and mobile/theme behavior. CI does not pretend to complete a real person's Google login.
+Do not commit credentials, exports, generated configuration, or database files.
+Never apply `migrations/*.sql` templates directly; `configure` generates environment-specific SQL.
+
+[Frontend development guide](https://github.com/aryansaves/eiga/blob/main/docs/development.md) · [Deployment workflow](.github/workflows/deploy.yml)
