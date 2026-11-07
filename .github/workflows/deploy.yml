@@ -2,15 +2,11 @@ name: EIGA deployment
 
 on:
   push:
-    branches: [main, "codex/**"]
+    branches: [main, staging]
   workflow_dispatch:
     inputs:
       frontend_ref:
-        description: Frontend commit or branch (empty uses configured staging branch)
-        required: false
-        type: string
-      backend_ref:
-        description: Backend commit or branch (empty uses configured staging branch)
+        description: Frontend commit already merged into staging (empty uses staging)
         required: false
         type: string
 
@@ -19,6 +15,7 @@ permissions:
 
 jobs:
   resolve:
+    if: github.ref == 'refs/heads/staging' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.pair.outputs.enabled }}
@@ -33,9 +30,6 @@ jobs:
           GH_TOKEN: ${{ secrets.EIGA_FRONTEND_READ_TOKEN || github.token }}
           BACKEND_TOKEN: ${{ github.token }}
           FRONTEND_REF: ${{ inputs.frontend_ref }}
-          BACKEND_REF: ${{ inputs.backend_ref }}
-          STAGING_FRONTEND_REF: ${{ vars.STAGING_FRONTEND_REF }}
-          STAGING_BACKEND_REF: ${{ vars.STAGING_BACKEND_REF }}
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync, existsSync, readFileSync } from 'node:fs';
@@ -48,21 +42,20 @@ jobs:
             console.log('Production is disabled until the reviewed release manifest enables it.');
             process.exit(0);
           }
-          async function commit(repo, ref, token, fallback = false) {
+          async function commit(repo, ref, token) {
             if (!/^[A-Za-z0-9_./-]{1,200}$/.test(ref)) throw new Error('Invalid source reference.');
             let response = await fetch(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, {headers: {Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json'}});
-            if ([404, 422].includes(response.status) && fallback) return commit(repo, 'main', token);
             if (!response.ok) throw new Error(`Cannot resolve ${repo} source (${response.status}).`);
             const {sha} = await response.json();
             if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid commit ID.');
             return sha;
           }
           const frontendRepo = 'aryansaves/eiga';
-          const frontendRef = production ? release.frontendCommit : env.FRONTEND_REF || env.STAGING_FRONTEND_REF || 'codex/auth-persistence';
+          const frontendRef = production ? release.frontendCommit : env.FRONTEND_REF || 'staging';
           if (production && !/^[a-f0-9]{40}$/.test(frontendRef ?? '')) throw new Error('Production requires a pinned frontend commit.');
-          const backendRef = env.GITHUB_EVENT_NAME === 'push' ? env.GITHUB_SHA : env.BACKEND_REF || env.STAGING_BACKEND_REF || 'codex/auth-persistence';
-          const frontend = await commit(frontendRepo, frontendRef, env.GH_TOKEN, !production && !env.FRONTEND_REF && !env.STAGING_FRONTEND_REF);
-          const backend = await commit(env.GITHUB_REPOSITORY, backendRef, env.BACKEND_TOKEN, !env.BACKEND_REF && !env.STAGING_BACKEND_REF);
+          const backendRef = env.GITHUB_SHA;
+          const frontend = await commit(frontendRepo, frontendRef, env.GH_TOKEN);
+          const backend = await commit(env.GITHUB_REPOSITORY, backendRef, env.BACKEND_TOKEN);
           const target = production ? 'production' : 'staging';
           appendFileSync(env.GITHUB_OUTPUT, `enabled=true\nenvironment=${target}\nfrontend=${frontend}\nbackend=${backend}\n`);
           appendFileSync(env.GITHUB_STEP_SUMMARY, `Deploying **${target}**\n\nFrontend: \`${frontend}\`\n\nBackend: \`${backend}\`\n`);
@@ -104,6 +97,12 @@ jobs:
         env:
           FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
         run: git merge-base --is-ancestor "$FRONTEND_COMMIT" origin/main
+      - name: Verify staging frontend was merged
+        if: needs.resolve.outputs.environment == 'staging'
+        working-directory: frontend
+        env:
+          FRONTEND_COMMIT: ${{ needs.resolve.outputs.frontend }}
+        run: git merge-base --is-ancestor "$FRONTEND_COMMIT" origin/staging
       - name: Install dependencies
         run: |
           npm ci --prefix backend

@@ -24,7 +24,22 @@ API: `GET /api/auth/session`, `GET /api/auth/google`, `GET /api/auth/google/call
 
 ## Staging and production
 
-Backend pushes on `codex/**` deploy staging. Frontend feature pushes dispatch this repository's `deploy.yml`. Set `STAGING_FRONTEND_REF` and `STAGING_BACKEND_REF` repository variables to the active feature branches (defaults are `codex/auth-persistence`). Workflow dispatch can choose other refs. CI resolves both refs once to immutable SHAs, checks both repositories, applies staging-only migrations, and uploads frontend assets plus root-level Functions together to `eiga-staging`. The staging project uses `--branch main` deliberately so the stable project root points at the tested release. CI verifies the live health endpoint matches both commits and checks the app, D1, configured login, and anonymous access rules.
+Feature branches run backend checks through pull requests targeting `staging` or `main`.
+Only backend `staging` pushes deploy staging; frontend `staging` pushes dispatch this
+repository's `deploy.yml` on backend `staging`, passing the frontend commit. Both
+repositories need a persistent `staging` branch, initially created from `main`.
+Install this workflow on backend `staging` before pushing frontend `staging`.
+Legacy `STAGING_FRONTEND_REF` and `STAGING_BACKEND_REF` variables are no longer read.
+Manual dispatch runs only on backend `staging`; the optional frontend commit must
+already belong to frontend `staging`. A missing staging branch fails explicitly.
+
+Merge feature PRs into `staging`, test the combined site, and promote tested work
+to `main`. CI resolves sources once to immutable SHAs, checks both repositories,
+applies staging-only migrations, and uploads frontend assets plus root-level
+Functions together to `eiga-staging`. The staging project uses `--branch main`
+deliberately so the stable project root points at the tested release; this Pages
+alias does not select the source Git branch. CI verifies the live health endpoint
+matches both commits and checks the app, D1, configured login, and anonymous rules.
 
 Backend GitHub settings:
 
@@ -35,7 +50,7 @@ Backend GitHub settings:
 
 Frontend secret `EIGA_DEPLOY_DISPATCH_TOKEN` needs Actions Write on this repository. If absent, frontend CI fails clearly rather than silently skipping deployment.
 
-`release.json` pins the production frontend SHA. To release, pin the reviewed frontend SHA in the backend feature branch, set `productionEnabled: true`, and stage that pair. After staging smoke tests pass, CI checks production Google credentials and automatic production Git build settings. By default this is read-only. The explicitly approved cutover flag `disableAutomaticProductionGitBuilds: true` disables only automatic production Git builds and verifies the setting before merging. Merge the tested frontend to main, then merge the backend release to main. Main pushes deploy production only when that flag is enabled; the workflow verifies the frontend commit belongs to frontend main. Frontend main pushes alone do not deploy production. Disable the legacy automatic production Git build before merging; Wrangler deployment and preview builds remain available.
+`release.json` pins the production frontend SHA. To release, pin the reviewed frontend SHA on backend `staging`, set `productionEnabled: true`, and stage that pair. After staging smoke tests pass, CI checks production Google credentials and automatic production Git build settings. By default this is read-only. The explicitly approved cutover flag `disableAutomaticProductionGitBuilds: true` disables only automatic production Git builds and verifies the setting before merging. Merge the tested frontend staging branch to main, then merge backend staging to main. Main pushes deploy production only when that flag is enabled; the workflow verifies the frontend commit belongs to frontend main. Frontend main pushes alone do not deploy production. Disable the legacy automatic production Git build before merging; Wrangler deployment and preview builds remain available.
 
 All deployment jobs share a concurrency group because D1 is shared. Use additive, backwards-compatible migrations: rolling back a Pages deployment does not undo SQL. Staging table resets must never delete production tables. Staging users and sessions are independent of production.
 
